@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 
-BOT_TOKEN = os.environ.get("8011292139:AAG9ilyi0guJOR-8nacGb8Su4eGNQzGzi28")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 SUPPORTED = (
     "youtube.com", "youtu.be",
