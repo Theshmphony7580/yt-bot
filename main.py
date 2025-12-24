@@ -3,18 +3,25 @@ import tempfile
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
+# 🔐 Bot token (hard-coded or env — both work)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 SUPPORTED = (
     "youtube.com", "youtu.be",
     "instagram.com",
-    "facebook.com", "fb.watch"
+    "facebook.com", "fb.watch",
 )
 
-# -------- Telegram Bot --------
+# ---------------- Telegram Bot ----------------
 
 def is_supported(url: str) -> bool:
     return any(s in url for s in SUPPORTED)
@@ -31,40 +38,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⏳ Downloading…")
 
         with tempfile.TemporaryDirectory() as tmp:
-            out = os.path.join(tmp, "%(title).50s.%(ext)s")
+            output = os.path.join(tmp, "%(title).50s.%(ext)s")
 
             cmd = [
                 "yt-dlp",
                 "-f", "best[ext=mp4]/best",
                 "--no-playlist",
                 "--quiet",
-                "-o", out,
-                url
+                "-o", output,
+                url,
             ]
 
             subprocess.run(cmd, check=True)
 
-            file = os.listdir(tmp)[0]
-            path = os.path.join(tmp, file)
+            filename = os.listdir(tmp)[0]
+            video_path = os.path.join(tmp, filename)
 
             await update.message.reply_text("📤 Uploading…")
-            with open(path, "rb") as v:
+            with open(video_path, "rb") as v:
                 await context.bot.send_video(
                     chat_id=chat_id,
                     video=v,
-                    supports_streaming=True
+                    supports_streaming=True,
                 )
 
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error")
+    except Exception:
+        await update.message.reply_text("❌ Failed to process video.")
 
-def run_bot():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🤖 Telegram bot running")
-    app.run_polling(close_loop=False)
-
-# -------- Minimal Web Server (Render Keep-Alive) --------
+# ---------------- Minimal Web Server ----------------
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -72,12 +73,26 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"OK")
 
-def run_web():
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     HTTPServer(("0.0.0.0", port), Handler).serve_forever()
 
-# -------- Start Both --------
+# ---------------- Main ----------------
+
+def main():
+    # Start web server in background
+    threading.Thread(target=start_web_server, daemon=True).start()
+
+    # Start Telegram bot in MAIN thread
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("🤖 Telegram bot running")
+    app.run_polling()
 
 if __name__ == "__main__":
-    threading.Thread(target=run_bot, daemon=True).start()
-    run_web()
+    main()
